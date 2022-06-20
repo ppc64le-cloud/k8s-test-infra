@@ -270,7 +270,8 @@ type PullRequest struct {
 	// is null, this means that the mergeability hasn't been computed yet, and a
 	// background job was started to compute it. When the job is complete, the response
 	// will include a non-null value for the mergeable attribute.
-	Mergable *bool `json:"mergeable,omitempty"`
+	Mergable      *bool   `json:"mergeable,omitempty"`
+	MergableState *string `json:"mergeable_state,omitempty"`
 	// If the PR doesn't have any milestone, `milestone` is null and is unmarshaled to nil.
 	Milestone         *Milestone `json:"milestone,omitempty"`
 	Commits           int        `json:"commits"`

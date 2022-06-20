@@ -141,6 +141,7 @@ type PullRequestClient interface {
 	UnrequestReview(org, repo string, number int, logins []string) error
 	Merge(org, repo string, pr int, details MergeDetails) error
 	IsMergeable(org, repo string, number int, SHA string) (bool, error)
+	IsMergeableWithState(org, repo string, number int, SHA string) (bool, *string, error)
 	ListPRCommits(org, repo string, number int) ([]RepositoryCommit, error)
 	UpdatePullRequestBranch(org, repo string, number int, expectedHeadSha *string) error
 }
@@ -4529,6 +4530,34 @@ func (c *client) IsMergeable(org, repo string, number int, SHA string) (bool, er
 		}
 	}
 	return false, fmt.Errorf("reached maximum number of retries (%d) checking mergeability", maxTries)
+}
+
+// IsMergeableWithState determines if a PR can be merged and also mergeable state is returned.
+// Mergeability is calculated by a background job on GitHub and is not immediately available when
+// new commits are added so the PR must be polled until the background job completes.
+func (c *client) IsMergeableWithState(org, repo string, number int, SHA string) (bool, *string, error) {
+	backoff := time.Second * 3
+	maxTries := 3
+	for try := 0; try < maxTries; try++ {
+		pr, err := c.GetPullRequest(org, repo, number)
+		if err != nil {
+			return false, nil, err
+		}
+		if pr.Head.SHA != SHA {
+			return false, nil, fmt.Errorf("pull request head changed while checking mergeability (%s -> %s)", SHA, pr.Head.SHA)
+		}
+		if pr.Merged {
+			return false, nil, errors.New("pull request was merged while checking mergeability")
+		}
+		if pr.Mergable != nil {
+			return *pr.Mergable, pr.MergableState, nil
+		}
+		if try+1 < maxTries {
+			c.time.Sleep(backoff)
+			backoff *= 2
+		}
+	}
+	return false, nil, fmt.Errorf("reached maximum number of retries (%d) checking mergeability", maxTries)
 }
 
 // ClearMilestone clears the milestone from the specified issue
